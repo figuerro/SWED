@@ -1,0 +1,243 @@
+import java.time.LocalDateTime;
+
+public class WebsiteMonitorApp {
+    public static void main(String[] args) throws InterruptedException {
+        User user1 = new User("Omid Fatehi", "omid@fatehi.com");
+        User user2 = new User("Max Mustermann", "max@mustermann.com");
+        User user3 = new User("Anna Schmidt", "anna@schmidt.com");
+
+        Website website1 = new Website("https://www.google.com", new ContentSizeStrategy());
+        Website website2 = new Website("https://www.google.com", new HtmlContentStrategy());
+        Website website3 = new Website("https://www.google.com", new TextContentStrategy());
+
+        NotificationPreferences prefs = new NotificationPreferences("15", "terminal");
+
+        // Alle drei Observer registrieren
+        website1.addObserver(user1);
+        website2.addObserver(user2);
+        website3.addObserver(user3);
+
+        System.out.println("Monitoring mit allen drei Strategien gestartet...");
+
+        while (true) {
+            System.out.println("\n--- Checking mit Content Size Strategy ---");
+            boolean changed1 = website1.checkForUpdates();
+            if (!changed1) {
+                System.out.println("[" + LocalDateTime.now() + "] Keine Größenänderung auf " + website1.getUrl());
+            }
+
+            System.out.println("--- Checking mit HTML Content Strategy ---");
+            boolean changed2 = website2.checkForUpdates();
+            if (!changed2) {
+                System.out.println("[" + LocalDateTime.now() + "] Keine HTML-Änderung auf " + website2.getUrl());
+            }
+
+            System.out.println("--- Checking mit Text Content Strategy ---");
+            boolean changed3 = website3.checkForUpdates();
+            if (!changed3) {
+                System.out.println("[" + LocalDateTime.now() + "] Keine Text-Änderung auf " + website3.getUrl());
+            }
+            Thread.sleep(Integer.parseInt(prefs.getFrequency()) * 1000);
+        }
+    }
+}
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+public class Website implements Subject {
+    private String websiteID;
+    private String url;
+    private LocalDateTime lastCheckedTimestamp;
+    private LocalDateTime lastUpdateDetectedTimestamp;
+    private String lastContent = "";
+    private List<Observer> observers = new ArrayList<>();
+    private ComparisonStrategy comparisonStrategy;
+
+    // Konstruktor mit Strategy
+    public Website(String url, ComparisonStrategy strategy) {
+        this.websiteID = UUID.randomUUID().toString();
+        this.url = url;
+        this.comparisonStrategy = strategy;
+    }
+
+    public boolean checkForUpdates() {
+        try {
+            String content = getUrlContent(url);
+            lastCheckedTimestamp = LocalDateTime.now();
+
+            // Verwende die Strategy für den Vergleich
+            if (comparisonStrategy.hasChanged(lastContent, content)) {
+                lastUpdateDetectedTimestamp = LocalDateTime.now();
+                lastContent = content;
+                notifyObservers();
+                return true;
+            }
+        } catch (Exception e) {
+            System.out.println("Fehler beim Prüfen: " + e.getMessage());
+        }
+        return false;
+    }
+
+    // Möglichkeit, die Strategie zur Laufzeit zu ändern
+    public void setComparisonStrategy(ComparisonStrategy strategy) {
+        this.comparisonStrategy = strategy;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    private String getUrlContent(String urlString) throws Exception {
+        StringBuilder content = new StringBuilder();
+        URL url = new URL(urlString);
+        HttpURLConnection con = (HttpURLConnection) url.openConnection();
+        con.setRequestMethod("GET");
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
+            String inputLine;
+            while ((inputLine = in.readLine()) != null)
+                content.append(inputLine);
+        }
+        return content.toString();
+    }
+
+    @Override
+    public void addObserver(Observer o) {
+        observers.add(o);
+    }
+
+    @Override
+    public void removeObserver(Observer o) {
+        observers.remove(o);
+    }
+
+    @Override
+    public void notifyObservers() {
+        for (Observer o : observers) {
+            o.update(url);
+        }
+    }
+}
+
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+public class User implements Observer {
+    private String userID;
+    private String name;
+    private String contactInfo;
+
+    public User(String name, String contactInfo) {
+        this.userID = UUID.randomUUID().toString();
+        this.name = name;
+        this.contactInfo = contactInfo;
+    }
+
+    @Override
+    public void update(String websiteUrl) {
+        System.out.println("[" + LocalDateTime.now() + "] Benachrichtigung an " + name + ": Änderung erkannt auf " + websiteUrl);
+    }
+}
+
+// Strategie 3: Text Content
+
+public class TextContentStrategy implements ComparisonStrategy {
+    @Override
+    public boolean hasChanged(String oldContent, String newContent) {
+        String oldText = removeHtmlTags(oldContent);
+        String newText = removeHtmlTags(newContent);
+        return !oldText.equals(newText);
+    }
+
+    private String removeHtmlTags(String content) {
+        return content.replaceAll("<[^>]*>", "").trim();
+    }
+}
+
+
+
+import java.util.UUID;
+
+public class Subscription {
+    private String subscriptionID;
+    private NotificationPreferences preferences;
+    private Website website;
+    private User user;
+
+    public Subscription(User user, Website website, NotificationPreferences preferences) {
+        this.subscriptionID = UUID.randomUUID().toString();
+        this.user = user;
+        this.website = website;
+        this.preferences = preferences;
+    }
+
+    public NotificationPreferences getPreferences() {
+        return preferences;
+    }
+
+    public Website getWebsite() {
+        return website;
+    }
+
+    public User getUser() {
+        return user;
+    }
+}
+
+public interface Subject {
+    void addObserver(Observer o);
+    void removeObserver(Observer o);
+    void notifyObservers();
+}
+
+public interface Observer {
+    void update(String websiteUrl);
+}
+
+import java.util.UUID;
+
+public class NotificationPreferences {
+    private String preferencesID;
+    private String frequency; // in Sekunden als String
+    private String communicationChannel;
+
+    public NotificationPreferences(String frequency, String communicationChannel) {
+        this.preferencesID = UUID.randomUUID().toString();
+        this.frequency = frequency;
+        this.communicationChannel = communicationChannel;
+    }
+
+    public String getFrequency() {
+        return frequency;
+    }
+}
+
+// Strategie 2: HTML Content
+
+public class HtmlContentStrategy implements ComparisonStrategy {
+    @Override
+    public boolean hasChanged(String oldContent, String newContent) {
+        return !oldContent.equals(newContent);
+    }
+}
+
+// Strategie 1: Content Size
+
+public class ContentSizeStrategy implements ComparisonStrategy {
+    @Override
+    public boolean hasChanged(String oldContent, String newContent) {
+        return oldContent.length() != newContent.length();
+    }
+}
+
+// Strategy Interface
+
+public interface ComparisonStrategy {
+    boolean hasChanged(String oldContent, String newContent);
+}
